@@ -1,0 +1,104 @@
+---
+title: "Data Exploration Challenge"
+author: "Romane Beeharry"
+format: html
+editor: visual
+---
+
+## Data Exploration Challenge
+
+**Research Question:** The College Scorecard was released at the start of September 2015. **Among colleges that predominantly grant bachelor’s degrees**, did the release of the Scorecard shift student interest to high-earnings colleges relative to low-earnings ones (as proxied by Google searches for keywords associated with those colleges)?:
+
+```{r}
+#Load the necessary libraries
+library(tidyverse)
+library(ggplot2)
+library(rio)
+library(fixest)
+```
+
+To observe the effect of the release of the Scorecard on student interest I will perform a set of regressions based on the Scorecard Trends Analysis data. The data contains the standardized indices by month for each school, which represents the search activity for a given month. The data is limited to colleges that predominantly grant bachelor's degree.
+
+It also contains information about the median earnings of individuals 10 years after having attended a school. This variable was converted into a binary variable to distinguish between high-earning and low-earning schools. The binary variable "HighEarning" is defined by a 1 if the earnings are greater than the mean average earning of \$42300. Anything below the threshold is considered low income and defined by a 0.
+
+Moreover, to account for the release of the scorecard, a binary variable "PostScorecard" was created by defining any date after September 2015 with one and any date before September 2015 with 0.
+
+In all of the regressions, the dependent variable is StandardizedIndex, which is a measure of search activity. The independent variables include PostScorecard and HighEarning, as well as SchoolType.
+
+```{r}
+reg_data <- import("C:/Users/roman/OneDrive/Documents/OMSBA 5300 Econometrics/Data Exploration Challenge/Week 7 Data Exploration Challenge/Analysis Data/ScorecardTrendsAnalysis_data.csv")
+
+reg_data <- na.omit(reg_data)
+```
+
+The first regression observes the effect of earnings on search interest before the release of the Scorecard. This regression is performed to observe if earning classification had any effect on the search activity before the scorecard was released.
+
+```{r}
+reg <- feols(StandardizedIndex ~ HighEarning, data = reg_data)
+etable(reg)
+
+# Create a ggplot scatter plot
+ggplot(reg_data, aes(x = HighEarning, y = StandardizedIndex)) +
+  geom_point() +  
+  labs(
+    x = "High Earning Colleges",
+    y = "Standardized Index",
+    title = "Effect of College Earnings Classification on Google Search Activity"
+  ) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") + 
+  theme_minimal()
+```
+
+In the table, we can see that the coefficient for "HighEarning" is 0.0047 with a standard error of 0.0049. This coefficient represents the average change in the standardized index for colleges classified as high-earning compared to those classified as low-earning. The coefficient is positive, indicating a positive relationship between high-earning status and the standardized index. For a unit increase in search activity, or standardized index, there is 0.0047 increase in interest for high-earning colleges. The result is not statistically significant at conventional levels (p \> 0.05), which indicates that colleges being classified as high-earning or low earning does not have an effect on search activity before the release of the Scorecard. The graph shows that search activity for low-earning and high-earning colleges are very similar.
+
+The second regression observes the effect of the release of the Scorecard on search activity.
+
+```{r}
+reg_post <- feols(StandardizedIndex ~ PostScorecard, data = reg_data, vcov = 'hetero')
+etable(reg_post)
+
+reg_data$Year <- year(reg_data$Month)
+
+# Create the ggplot visualization 
+ggplot(reg_data, aes(Year, StandardizedIndex)) +
+  facet_grid(~ PostScorecard) +  
+  geom_line(aes(y = fitted(reg_post)), linetype = 'dashed', size = 0.8) +  
+  geom_point(alpha = 0.3) +  
+  geom_hline(yintercept = 0, linetype = "dashed") +  
+  theme_bw()
+```
+
+In the table, we can see that the coefficient for PostScorecard is -0.2712 with a standard error of 0.0063. This coefficient is associated with a decrease in search activity after the release of the College Scorecard. The negative coefficient suggests that, on average, the standardized index decreased by 0.2712 unit changes after the release of the Scorecard. The graph shows the search activity before the release of the scorecard and after the release of the scorecard over the years. The fitted line shows a slight decrease in search activity from 2015 to 2016.
+
+Let's see if there is any effects on search activity from PostScorecard release and Earning classification. Moreover, School Type is included as a fixed effect to control for different school types such as Public, Private Non-Profit and Private For-Profit.
+
+```{r}
+reg_earningpost <- feols(StandardizedIndex ~ PostScorecard + PostScorecard * HighEarning | SchoolType, data = reg_data, vcov = 'hetero')
+etable(reg_earningpost)
+
+#Plot the regression
+ggplot(reg_data, aes(Year, StandardizedIndex, group = interaction(SchoolType, HighEarning), col = HighEarning)) +
+  facet_grid(~ PostScorecard) +  
+  geom_line(aes(y = fitted(reg_earningpost), linetype = as.factor(SchoolType)), size = 0.8) +  
+  geom_point(alpha = 0.5) +  
+  geom_hline(yintercept = 0, linetype = "dashed") +  
+  theme_bw()
+
+library(ggpubr) 
+
+# Create a plot to visualize the regression results
+ggplot(reg_data, aes(x = StandardizedIndex, y = fitted(reg_earningpost), color = factor(PostScorecard))) +
+  geom_point(alpha = 0.5) +  
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray") +
+  labs(x = "Observed Standardized Index", y = "Estimated Standardized Index", color = "Post Scorecard") +  # Add labels
+  ggtitle("Observed vs Estimated Standardized Index") +  
+  theme_minimal()  
+```
+
+The above regression includes an interaction term PostScorecard\*HighEarning. This was used to capture the differential effect of the College Scorecard release on Google search activity between high-earning and low-earning colleges. The coefficient associated with this interaction term indicates whether the release of the College Scorecard had a significant impact on the difference in search activity between high-earning and low-earning colleges.
+
+Based on the table, we can conclude that the introduction of the College Scorecard is associated with a decreased search activity on Google Trends for colleges with high-earning graduates by 0.1029 units relative to what it did for colleges with low-earning graduates, with a standard error of 0.0126. This result comes from the coefficient associated with the interaction term 'PostScorecard \* HighEarning' in my regression.
+
+The first graph shows that the release of the scorecard had an effect of decreasing search activity on Google Trends for high-earning colleges of all types relative to low-earning colleges, as demonstrated for the years 2015 and 2016 in the Facet 1.
+
+Overall, the introduction of the Scorecard had the effect of decreasing search activity on Google Trends for colleges with high-earning graduates relative to colleges with low-earning graduates.
